@@ -464,3 +464,40 @@ Validation added:
 
 The user must still copy the updated `backend/lambda/lambda_function.py` into AWS Lambda before API Gateway, Postman, or the Flask app reflect this behavior.
 
+## Anti-Loop Hardening Update - 2026-06-12
+
+A later test showed the assistant could still loop on the same option, for example `Compare RedRybbons innovation`, and could return vague subject options like `AI/data`.
+
+Fix added:
+
+- Vague subject labels such as `AI/data`, `AI`, `data`, `ML`, `MLOps`, `GenAI`, `statistics`, or `analytics` are no longer accepted as valid second options.
+- The anti-loop bridge now follows the latest repeated topic in the conversation, not an older company mentioned earlier in chat history.
+- Repeated `RedRybbons` now bridges to `Compare R-Cafe execution` with a GenAI/scaling-style subject option.
+- Repeated `SMAAT` now bridges to `Compare Supreme Court governance` with a signal/control-model subject option.
+- This prevents the user from seeing the same professional option repeatedly.
+
+## Guided Journey State Machine - 2026-06-12
+
+The conversation flow is now a guided journey rather than simple anti-looping.
+
+Normal experience rounds:
+
+- Each work-experience thread gets roughly two user turns.
+- Normal option set stays at two choices: one professional-experience option and one subject-depth option.
+- Subject-depth options rotate across AI, data, ML, MLOps, GenAI, mathematics, probability, statistics, analytics, systems thinking, and leadership.
+- After two turns on one experience, the next professional option moves to the next uncovered experience.
+
+Comparison milestones:
+
+- After 3 covered experiences, comparison options equal `2C1 = 2`.
+- After 4 covered experiences, comparison options equal `3C1 = 3`.
+- After 5 covered experiences, comparison options equal `4C1 = 4`.
+- After 6 covered experiences, comparison options equal `5C1 = 5`.
+- In general, when the latest experience is the anchor, the number of comparison options equals the number of prior covered experiences.
+
+Frontend update:
+
+- The browser now sends the last 20 messages instead of only 6, so Lambda has enough journey context.
+- The frontend now treats all list items after the first 3 answer bullets as clickable options, allowing 2-5 comparison choices.
+- JavaScript cache version is now `app.js?v=19`.
+

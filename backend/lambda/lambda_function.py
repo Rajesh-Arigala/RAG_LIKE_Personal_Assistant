@@ -55,7 +55,7 @@ Rules:
 3. Format every successful professional answer as exactly 3 concise bullet points for the main answer. Do not write a paragraph block.
 4. Keep the answer concise and direct. Avoid repetition, filler, generic praise, and repeated phrases. Each bullet must be one short single-line sentence under 14 words.
 5. Subtly connect the answer to Rajesh's AI/platform direction when it is natural: show how the experience strengthens analytical thinking, mathematics, probability, statistics, domain understanding, governance, data, modelling, platform engineering, MLOps, or enterprise AI readiness. Present this as a professional trajectory toward becoming a serious AI domain expert who can lead large teams on meaningful, human-advancing AI work. Do not sound promotional, exaggerated, or forced.
-6. End every successful professional answer with exactly two short follow-up options as bullets. Each option must be under 7 words. Do not include headings or labels such as "Follow-up choices", "Follow-up choice 1", "Choice 1", or "Option 1".
+6. End every normal successful professional answer with exactly two short follow-up options as bullets. At comparison milestones, return one comparison option for each prior covered experience. Each option must be under 7 words. Do not include headings or labels such as "Follow-up choices", "Follow-up choice 1", "Choice 1", or "Option 1".
    - First option must be a Professional Experience Thread: BPCL, Medtronic, Supreme Court, SMAAT, R-Cafe, RedRybbons, or a specific project/proof point.
    - Second option must be a Subject-Depth Thread: AI/data, data modelling, machine learning, deep learning, MLOps, GenAI, mathematics, probability, statistics, analytics, uncertainty, decision quality, modelling, systems thinking, or human/leadership threads.
    - Do not make both options professional-experience options. Do not make both options subject-depth options. Keep one of each.
@@ -230,8 +230,8 @@ Use an intellectually sharp, domain-aware, systems-oriented tone that reflects R
 Answer only what the visitor asked. Keep the answer concise, non-repetitive, and specific.
 Use exactly 3 concise bullet points for the main answer. Each bullet must be a single-line sentence under 14 words. Do not produce a paragraph block. Do not list every employer unless the visitor asks for full background.
 Where natural, include a subtle bridge from the answer to Rajesh's AI/platform direction through analytical thinking, mathematics, probability, statistics, domain expertise, governance, data, modelling, MLOps, or enterprise AI readiness. Position this as a path toward AI domain expertise and leading substantial teams on meaningful human-advancing AI work, but do not overstate or make it sound like marketing.
-End with exactly two relevant follow-up choices as short bullet points or numbered options.
-End with exactly two short follow-up options as bullets. Each option must be under 7 words. Do not include headings or labels such as "Follow-up choices", "Follow-up choice 1", "Choice 1", or "Option 1".
+End with normal follow-up choices as short bullet points or numbered options.
+End normal turns with exactly two short follow-up options as bullets. At comparison milestones, return one comparison option for each prior covered experience. Each option must be under 7 words. Do not include headings or labels such as "Follow-up choices", "Follow-up choice 1", "Choice 1", or "Option 1".
 First option must be a Professional Experience Thread: BPCL, Medtronic, Supreme Court, SMAAT, R-Cafe, RedRybbons, or a specific project/proof point.
 Second option must be a Subject-Depth Thread: AI/data, data modelling, machine learning, deep learning, MLOps, GenAI, mathematics, probability, statistics, analytics, uncertainty, decision quality, modelling, systems thinking, or human/leadership threads.
 Do not make both options professional-experience options. Do not make both options subject-depth options. Keep one of each.
@@ -312,7 +312,7 @@ def _normalize_conversation_context(value: Any) -> list[dict[str, str]]:
     if not isinstance(value, list):
         return []
     normalized = []
-    for item in value[-6:]:
+    for item in value[-14:]:
         if not isinstance(item, Mapping):
             continue
         role = str(item.get("role") or "").strip().lower()
@@ -338,7 +338,7 @@ def _format_conversation_context(conversation_context: Iterable[Mapping[str, str
 def _enforce_bulleted_answer(answer: str, question: str = "", conversation_context: Iterable[Mapping[str, str]] | None = None) -> str:
     """Keep public answers scannable even if the model returns a paragraph."""
     clean_answer = str(answer or "").strip()
-    context_text = " ".join([question, _format_conversation_context(conversation_context or [])])
+    context_text = f"current_question: {question}\n{_format_conversation_context(conversation_context or [])}"
     if not clean_answer:
         return clean_answer
 
@@ -381,14 +381,14 @@ def _normalize_bulleted_response(lines: list[str], context_text: str = "") -> st
         else:
             other_lines.append(line)
 
-    if len(list_items) >= 5:
-        answer_items = list_items[:-2][:3]
-        followups = list_items[-2:]
-    elif len(list_items) >= 3:
+    if len(list_items) >= 4:
         answer_items = list_items[:3]
-        followups = list_items[3:5]
+        followups = list_items[3:]
+    elif len(list_items) == 2 and not other_lines:
+        answer_items = []
+        followups = list_items
     else:
-        answer_items = list_items
+        answer_items = list_items[:3]
         followups = []
 
     topic_text = " ".join(lines) + " " + context_text
@@ -400,14 +400,17 @@ def _normalize_bulleted_response(lines: list[str], context_text: str = "") -> st
 
 def _finalize_followups(followups: list[str], topic_text: str) -> list[str]:
     cleaned = [_shorten_sentence(_clean_followup_label(item), 7) for item in followups if item]
+    planned = _planned_followups(topic_text)
+
+    if planned:
+        return [f"- {_shorten_sentence(item, 7)}" for item in planned]
+
     professional_candidates = [item for item in cleaned if _is_professional_thread_option(item)]
     subject_candidates = [item for item in cleaned if _is_subject_depth_option(item)]
-
-    bridge = _bridge_followup_if_repeated(topic_text)
-    first = bridge or (professional_candidates[0] if professional_candidates else _default_deeper_followup(topic_text))
+    first = professional_candidates[0] if professional_candidates else _default_deeper_followup(topic_text)
     second = subject_candidates[0] if subject_candidates else _default_subject_depth_followup(topic_text)
 
-    if _same_option_family(first, second):
+    if _same_option_family(first, second) or _is_vague_subject_label(second):
         second = _default_subject_depth_followup(topic_text)
     if first.strip().lower() == second.strip().lower():
         second = _alternate_subject_depth_followup(topic_text)
@@ -423,6 +426,8 @@ def _is_professional_thread_option(text: str) -> bool:
 
 def _is_subject_depth_option(text: str) -> bool:
     lowered = text.lower()
+    if _is_vague_subject_label(lowered):
+        return False
     has_company = bool(re.search(r"\b(bpcl|bharat petroleum|medtronic|supreme court|smaat|r-cafe|rcafe|redrybbons|red rybbons)\b", lowered))
     strong_subject = bool(re.search(r"\b(ai|data|model|modelling|modeling|ml|machine learning|deep learning|mlops|genai|math|probability|statistics|statistical|analytics|uncertainty|decision|risk|signals|features|metrics)\b", lowered))
     human_subject = bool(re.search(r"\b(human judgment|team execution|leadership under uncertainty|trust|accountability|human advancement)\b", lowered))
@@ -432,25 +437,242 @@ def _is_subject_depth_option(text: str) -> bool:
     return strong_subject or human_subject or systems_subject
 
 
+def _is_vague_subject_label(text: str) -> bool:
+    compact = re.sub(r"[^a-z0-9/ ]", "", text.lower()).strip()
+    vague_labels = {
+        "ai",
+        "data",
+        "ai data",
+        "ai/data",
+        "analytics",
+        "ml",
+        "mlops",
+        "genai",
+        "probability",
+        "statistics",
+        "math",
+        "mathematics",
+        "systems thinking",
+    }
+    if compact in vague_labels:
+        return True
+    return len(compact.split()) < 3 and "/" in compact
+
+
 def _same_option_family(first: str, second: str) -> bool:
     return _is_professional_thread_option(first) and _is_professional_thread_option(second)
 
 
+EXPERIENCE_FLOW = ["bpcl", "medtronic", "supreme court", "smaat", "r-cafe", "redrybbons"]
+
+EXPERIENCE_NAMES = {
+    "bpcl": "BPCL",
+    "medtronic": "Medtronic",
+    "supreme court": "Supreme Court",
+    "smaat": "SMAAT",
+    "r-cafe": "R-Cafe",
+    "redrybbons": "RedRybbons",
+}
+
+EXPERIENCE_OPTIONS = {
+    "bpcl": "Explore BPCL reliability work.",
+    "medtronic": "Explore Medtronic ecosystem design.",
+    "supreme court": "Explore Supreme Court governance.",
+    "smaat": "Explore SMAAT control planes.",
+    "r-cafe": "Explore R-Cafe execution.",
+    "redrybbons": "Explore RedRybbons innovation.",
+}
+
+SUBJECT_DEPTH_OPTIONS = {
+    "bpcl": [
+        "Where does reliability become probability?",
+        "Which signals predict failure?",
+    ],
+    "medtronic": [
+        "What predicts adoption friction?",
+        "Where does adoption become statistics?",
+    ],
+    "supreme court": [
+        "Can governance become data?",
+        "What makes accountability measurable?",
+    ],
+    "smaat": [
+        "Which signals train control models?",
+        "How would MLOps govern signals?",
+    ],
+    "r-cafe": [
+        "Which features predict margins?",
+        "What analytics reveal unit economics?",
+    ],
+    "redrybbons": [
+        "Could GenAI map scaling risks?",
+        "Where can GenAI support design?",
+    ],
+}
+
+
+def _planned_followups(topic_text: str) -> list[str]:
+    current_question = _current_question_text(topic_text)
+    covered = _covered_experience_topics(topic_text)
+    latest_topic = _latest_experience_topic(current_question) or (covered[-1] if covered else None)
+
+    if _is_opening_professional_choice(current_question) or not latest_topic:
+        return [EXPERIENCE_OPTIONS["bpcl"], _subject_depth_for("bpcl", topic_text)]
+
+    if _is_compare_question(current_question):
+        next_topic = _next_uncovered_or_next_topic(covered, latest_topic)
+        return [EXPERIENCE_OPTIONS[next_topic], _subject_depth_for(next_topic, topic_text)]
+
+    comparison_options = _comparison_milestone_options(topic_text, covered, latest_topic)
+    if comparison_options:
+        return comparison_options
+
+    topic_turns = _user_topic_turn_count(topic_text, latest_topic)
+    if topic_turns >= 2:
+        next_topic = _next_uncovered_or_next_topic(covered, latest_topic)
+        return [EXPERIENCE_OPTIONS[next_topic], _subject_depth_for(next_topic, topic_text)]
+
+    return [EXPERIENCE_OPTIONS[latest_topic], _subject_depth_for(latest_topic, topic_text)]
+
+
+def _comparison_milestone_options(topic_text: str, covered: list[str], latest_topic: str) -> list[str]:
+    experience_rounds = _experience_user_turn_count(topic_text)
+    if experience_rounds < 6 or len(covered) < 3:
+        return []
+    if experience_rounds != len(covered) * 2:
+        return []
+    previous = [topic for topic in covered if topic != latest_topic]
+    return [_compare_option(latest_topic, topic) for topic in previous]
+
+
+def _compare_option(first_topic: str, second_topic: str) -> str:
+    return f"Compare {EXPERIENCE_NAMES[first_topic]} with {EXPERIENCE_NAMES[second_topic]}."
+
+
+def _current_question_text(topic_text: str) -> str:
+    match = re.search(r"current_question:\s*(.*?)(?:\n|$)", topic_text, flags=re.IGNORECASE)
+    if match:
+        return match.group(1).strip().lower()
+    return topic_text.split("\nuser:", 1)[0].lower()
+
+
+def _is_opening_professional_choice(text: str) -> bool:
+    lowered = text.lower()
+    return bool(re.search(r"\b(real-world work|work experience|professional background|what should i know first|start with rajesh)\b", lowered)) and not _latest_experience_topic(lowered)
+
+
+def _is_compare_question(text: str) -> bool:
+    return "compare" in text.lower()
+
+
+def _covered_experience_topics(topic_text: str) -> list[str]:
+    covered = []
+    chunks = re.split(r"\n(?=user:|assistant:)", topic_text.lower())
+    for chunk in chunks:
+        topic = _latest_experience_topic(chunk)
+        if topic and topic not in covered:
+            covered.append(topic)
+    return covered
+
+
+def _latest_experience_topic(topic_text: str) -> str | None:
+    text = topic_text.lower()
+    latest = None
+    latest_pos = -1
+    for topic in EXPERIENCE_FLOW:
+        for alias in _topic_aliases(topic):
+            pos = text.rfind(alias)
+            if pos > latest_pos:
+                latest = topic
+                latest_pos = pos
+    return latest
+
+
+def _next_uncovered_or_next_topic(covered: list[str], current_topic: str) -> str:
+    for topic in EXPERIENCE_FLOW:
+        if topic not in covered:
+            return topic
+    return _next_experience_topic(current_topic)
+
+
+def _next_experience_topic(topic: str) -> str:
+    if topic not in EXPERIENCE_FLOW:
+        return EXPERIENCE_FLOW[0]
+    return EXPERIENCE_FLOW[(EXPERIENCE_FLOW.index(topic) + 1) % len(EXPERIENCE_FLOW)]
+
+
+def _user_turn_count(topic_text: str) -> int:
+    return len(re.findall(r"(?:^|\n)user:\s*", topic_text.lower())) + 1
+
+
+def _experience_user_turn_count(topic_text: str) -> int:
+    lines = re.findall(r"(?:^|\n)user:\s*(.+)", topic_text.lower())
+    current = _current_question_text(topic_text)
+    return sum(1 for line in lines + [current] if _latest_experience_topic(line) and not _is_compare_question(line))
+
+
+def _user_topic_turn_count(topic_text: str, topic: str) -> int:
+    lines = re.findall(r"(?:^|\n)user:\s*(.+)", topic_text.lower())
+    current = _current_question_text(topic_text)
+    return sum(1 for line in lines + [current] if _contains_topic(line, topic) and not _is_compare_question(line))
+
+
+def _contains_topic(text: str, topic: str) -> bool:
+    return any(alias in text for alias in _topic_aliases(topic))
+
+
+def _subject_depth_for(topic: str, topic_text: str) -> str:
+    options = SUBJECT_DEPTH_OPTIONS.get(topic) or ["How should uncertainty shape ML?"]
+    used = topic_text.lower()
+    for option in options:
+        if option.lower().rstrip(".") not in used:
+            return option
+    return options[-1]
+
+
+def _topic_aliases(topic: str) -> list[str]:
+    topic_aliases = {
+        "bpcl": ["bpcl", "bharat petroleum", "industrial", "asset", "reliability"],
+        "medtronic": ["medtronic", "healthcare", "therapy", "adoption"],
+        "smaat": ["smaat", "water", "distributed infrastructure", "control planes", "control plane"],
+        "supreme court": ["supreme court", "constitutional", "governance architecture", "accountability"],
+        "r-cafe": ["r-cafe", "rcafe", "hospitality", "p&l"],
+        "redrybbons": ["redrybbons", "red rybbons", "innovation", "craft"],
+    }
+    return topic_aliases.get(topic, [topic])
+
 def _bridge_followup_if_repeated(topic_text: str) -> str | None:
     text = topic_text.lower()
-    if _topic_mentions(text, "bpcl") >= 2:
-        return "Compare Medtronic ecosystem design."
-    if _topic_mentions(text, "medtronic") >= 2:
-        return "Compare SMAAT control planes."
-    if _topic_mentions(text, "smaat") >= 2:
-        return "Compare Supreme Court governance."
-    if _topic_mentions(text, "supreme court") >= 2:
-        return "Compare RedRybbons innovation."
-    if _topic_mentions(text, "r-cafe") >= 2:
-        return "Compare RedRybbons scaling."
-    if _topic_mentions(text, "redrybbons") >= 2:
-        return "Compare SMAAT control planes."
-    return None
+    bridge_map = {
+        "bpcl": "Compare Medtronic ecosystem design.",
+        "medtronic": "Compare SMAAT control planes.",
+        "smaat": "Compare Supreme Court governance.",
+        "supreme court": "Compare RedRybbons innovation.",
+        "r-cafe": "Compare RedRybbons scaling.",
+        "redrybbons": "Compare R-Cafe execution.",
+    }
+    repeated_topics = []
+    for topic in bridge_map:
+        count = _topic_mentions(text, topic)
+        if count < 2:
+            continue
+        repeated_topics.append((text.rfind(_primary_topic_alias(topic)), count, topic))
+    if not repeated_topics:
+        return None
+    repeated_topics.sort(reverse=True)
+    return bridge_map[repeated_topics[0][2]]
+
+
+def _primary_topic_alias(topic: str) -> str:
+    aliases = {
+        "bpcl": "bpcl",
+        "medtronic": "medtronic",
+        "smaat": "smaat",
+        "supreme court": "supreme court",
+        "r-cafe": "r-cafe",
+        "redrybbons": "redrybbons",
+    }
+    return aliases.get(topic, topic)
 
 
 def _has_analytical_angle(text: str) -> bool:
@@ -483,15 +705,7 @@ def _default_deeper_followup(topic_text: str) -> str:
 
 
 def _topic_mentions(text: str, topic: str) -> int:
-    topic_aliases = {
-        "bpcl": ["bpcl", "bharat petroleum"],
-        "medtronic": ["medtronic"],
-        "smaat": ["smaat"],
-        "supreme court": ["supreme court", "constitutional"],
-        "r-cafe": ["r-cafe", "rcafe"],
-        "redrybbons": ["redrybbons", "red rybbons"],
-    }
-    return sum(text.count(alias) for alias in topic_aliases.get(topic, [topic]))
+    return sum(text.count(alias) for alias in _topic_aliases(topic))
 
 
 def _default_subject_depth_followup(topic_text: str) -> str:

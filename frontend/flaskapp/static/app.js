@@ -224,7 +224,7 @@ function wait(ms) {
 
 function buildConversationParcel() {
   return messages
-    .slice(-6)
+    .slice(-20)
     .map((message) => ({
       role: message.role === "user" ? "user" : "assistant",
       text: String(message.text || "").slice(0, 900)
@@ -261,7 +261,8 @@ function extractChoices(text) {
       return match ? { index, text: match[1].trim() } : null;
     })
     .filter(Boolean);
-  return listItems.slice(-2).map((item) => cleanChoiceLabel(item.text));
+  const choiceItems = listItems.length <= 2 ? listItems : listItems.slice(3);
+  return choiceItems.map((item) => cleanChoiceLabel(item.text));
 }
 
 
@@ -295,7 +296,8 @@ function formatText(value, role = "assistant") {
   const listItems = lines
     .map((line, index) => ({ index, match: line.trim().match(/^(?:[-*•]|\d+[.)])\s+(.+)$/) }))
     .filter((item) => item.match);
-  const choiceIndexes = new Set(listItems.slice(-2).map((item) => item.index));
+  const choiceItems = listItems.length <= 2 ? listItems : listItems.slice(3);
+  const choiceIndexes = new Set(choiceItems.map((item) => item.index));
 
   const html = [];
   lines.forEach((line, index) => {
