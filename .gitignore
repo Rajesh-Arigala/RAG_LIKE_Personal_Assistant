@@ -1,0 +1,8 @@
+.DS_Store
+__pycache__/
+*.pyc
+.env
+frontend/flaskapp/.env
+.venv/
+venv/
+.env.local

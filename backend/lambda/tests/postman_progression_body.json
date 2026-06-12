@@ -1,0 +1,21 @@
+{
+  "question": "Explore BPCL asset lifecycle governance.",
+  "conversation_context": [
+    {
+      "role": "user",
+      "text": "Start with Rajesh's real-world work experience."
+    },
+    {
+      "role": "assistant",
+      "text": "- BPCL built reliability and asset governance foundations.\n- Medtronic added healthcare ecosystem and adoption economics.\n- These systems shaped Rajesh's AI platform direction.\n- Explore BPCL asset governance.\n- Where does reliability become probability?"
+    },
+    {
+      "role": "user",
+      "text": "Explore BPCL asset governance."
+    },
+    {
+      "role": "assistant",
+      "text": "- BPCL connected maintenance, budgets, contracts, and operations.\n- Reliability depended on governed interfaces across teams.\n- This discipline later informs AI platform reliability.\n- Explore BPCL asset lifecycle governance.\n- What would ML predict next?"
+    }
+  ]
+}

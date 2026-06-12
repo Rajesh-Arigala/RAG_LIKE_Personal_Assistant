@@ -1,0 +1,13 @@
+{
+  "question": "Tell me more about the first option",
+  "conversation_context": [
+    {
+      "role": "user",
+      "text": "What is his AI skill?"
+    },
+    {
+      "role": "assistant",
+      "text": "- Rajesh combines mathematics, probability, statistics, and analytics.\n- His path extends into ML, deep learning, GenAI, and MLOps.\n- The direction is enterprise AI with serious domain grounding.\n- Explore Rajesh's AI platform work.\n- Where does probability shape AI?"
+    }
+  ]
+}
