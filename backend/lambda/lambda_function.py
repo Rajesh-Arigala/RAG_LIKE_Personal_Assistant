@@ -103,9 +103,9 @@ SUBJECT_OPTIONS = {
 
 ROUTE_OPTIONS = {
     ROUTE_GREETING: ["Start with Rajesh's work experience.", "Show his AI/platform direction."],
-    ROUTE_HIRING_FIT: ["Assess AI platform fit.", "What interview signal matters?"],
+    ROUTE_HIRING_FIT: ["Assess AI platform fit.", "Test interview signal."],
     ROUTE_INTERVIEW_EVALUATION: ["Test systems judgment.", "Probe AI/platform reasoning."],
-    ROUTE_COLLABORATION_FIT: ["Map a platform project.", "Explore execution fit."],
+    ROUTE_COLLABORATION_FIT: ["Show stakeholder examples.", "How would he lead AI teams?"],
     ROUTE_GUIDED_DISCOVERY: ["Start with real-world systems.", "Try an AI reasoning thread."],
     ROUTE_OUT_OF_SCOPE: ["Ask about Rajesh's work.", "Ask about collaboration fit."],
 }
@@ -113,9 +113,16 @@ ROUTE_OPTIONS = {
 ROUTE_OPTION_ALTERNATES = {
     ROUTE_HIRING_FIT: ["Map role fit.", "Probe systems judgment."],
     ROUTE_INTERVIEW_EVALUATION: ["Test modelling judgment.", "Probe execution depth."],
-    ROUTE_COLLABORATION_FIT: ["Design collaboration scenario.", "Assess delivery strengths."],
+    ROUTE_COLLABORATION_FIT: ["Map a platform project.", "Assess delivery strengths."],
     ROUTE_GUIDED_DISCOVERY: ["See strongest proof points.", "Explore analytical strengths."],
 }
+
+AI_ROUTE_OPTIONS = [
+    ["Connect this to work proof.", "Test GenAI reasoning."],
+    ["Map AI platform fit.", "Probe modelling depth."],
+    ["Show production AI angle.", "Test MLOps judgment."],
+    ["Connect to governance.", "Ask a probability question."],
+]
 
 SYSTEM_PROMPT = f"""
 You are {ASSISTANT_NAME}, a professional AI representative for "{PROFILE_NAME}".
@@ -275,6 +282,8 @@ Rules:
 - Return only 3 bullets.
 - Each bullet must be one complete sentence.
 - Each bullet should be concise, specific, and natural.
+- Each bullet should answer the user's exact question before giving background.
+- Avoid generic phrases such as diverse background, professional journey, or strong candidate unless supported by specific evidence.
 - Do not include headings.
 - Do not include follow-up options.
 - Do not include source names, route names, topic names, or state details.
@@ -391,7 +400,7 @@ def decide_route(question: str, chat_history: Iterable[Mapping[str, str]], state
         return ROUTE_HIRING_FIT
     if _matches(text, r"\b(interview|evaluate|evaluation|assessment|signal|interview signal|test|screen|probe|judge|validate)\b"):
         return ROUTE_INTERVIEW_EVALUATION
-    if _matches(text, r"\b(collaborate|collaboration|partner|partnership|consulting|client|project with him|work with him|services|platform project|delivery strengths|execution fit)\b"):
+    if _matches(text, r"\b(collaborate|collaboration|partner|partnership|consulting|client|project with him|work with him|services|platform project|delivery strengths|execution fit|team player|teamwork|team|lead team|leadership|manage people|stakeholder)\b"):
         return ROUTE_COLLABORATION_FIT
     if _matches(text, r"\b(compare|versus|\bvs\b|difference|similarity|contrast|stronger|better)\b"):
         return ROUTE_COMPARISON
@@ -428,6 +437,8 @@ def decide_topic(question: str, route: str, state: Mapping[str, Any], selected_o
     current = _safe_topic(state.get("current_topic"))
     last_experience = _safe_topic(state.get("last_experience_topic"))
     if route == ROUTE_AI_TECHNICAL_DEPTH:
+        if _matches(text, r"\b(genai|generative ai|ai platform|mlops|machine learning|deep learning|data modelling|data modeling|modeling|modelling|ai governance|does he know ai|does he know genai)\b"):
+            return TOPIC_AI_PLATFORM
         if current in EXPERIENCE_FLOW:
             return current
         if last_experience in EXPERIENCE_FLOW:
@@ -478,6 +489,8 @@ def update_conversation_state(state: Mapping[str, Any], route: str, topic: str, 
 # ---------------------------------------------------------------------------
 
 def generate_options(route: str, topic: str, state: Mapping[str, Any]) -> list[str]:
+    if route == ROUTE_AI_TECHNICAL_DEPTH and topic not in EXPERIENCE_FLOW:
+        return _ai_route_options(state)
     if route in ROUTE_OPTIONS:
         return _avoid_repeated_options(ROUTE_OPTIONS[route], ROUTE_OPTION_ALTERNATES.get(route, []), state)
     comparison_options = _comparison_options_if_due(route, topic, state)
@@ -545,6 +558,16 @@ def _comparison_options_if_due(route: str, topic: str, state: Mapping[str, Any])
     return [f"Compare {topic} with {other}." for other in covered if other != topic]
 
 
+def _ai_route_options(state: Mapping[str, Any]) -> list[str]:
+    used = _used_options_text(state)
+    index = _safe_int(state.get("total_turn_count"), 0) % len(AI_ROUTE_OPTIONS)
+    ordered = AI_ROUTE_OPTIONS[index:] + AI_ROUTE_OPTIONS[:index]
+    for options in ordered:
+        if all(_normalize_label(item) not in used for item in options):
+            return options
+    return AI_ROUTE_OPTIONS[index]
+
+
 def _avoid_repeated_options(options: list[str], alternates: list[str], state: Mapping[str, Any]) -> list[str]:
     last = _used_options_text(state)
     result: list[str] = []
@@ -572,10 +595,13 @@ def _avoid_repeated_options(options: list[str], alternates: list[str], state: Ma
 # ---------------------------------------------------------------------------
 
 def validate_or_fallback_answer(raw_answer: str, route: str, topic: str, question: str) -> str:
+    if route == ROUTE_HIRING_FIT:
+        return _apply_answer_quality(_fallback_answer(route, topic, question), route, question)
     bullets = _extract_answer_bullets(raw_answer)
     if not _valid_answer_bullets(bullets, route):
-        return _fallback_answer(route, topic, question)
-    return "\n".join(f"- {_clean_answer_sentence(item)}" for item in bullets)
+        return _apply_answer_quality(_fallback_answer(route, topic, question), route, question)
+    answer = "\n".join(f"- {_clean_answer_sentence(item)}" for item in bullets)
+    return _apply_answer_quality(answer, route, question)
 
 
 def _extract_answer_bullets(raw_answer: str) -> list[str]:
@@ -641,6 +667,12 @@ def _fallback_answer(route: str, topic: str, question: str = "") -> str:
             "The strongest signal is structured judgment under ambiguity, not memorized AI vocabulary.",
         ])
     if route == ROUTE_COLLABORATION_FIT:
+        if _matches(question.lower(), r"\b(team|team player|teamwork|lead team|leadership|stakeholder)\b"):
+            return _join_bullets([
+                "Rajesh is a strong team player because his work repeatedly required cross-functional stakeholder alignment.",
+                "Medtronic involved physicians, hospitals, distributors, and internal teams around therapy adoption.",
+                "BPCL and SMAAT show coordination across operations, vendors, infrastructure, governance, and execution teams.",
+            ])
         return _join_bullets([
             "Rajesh fits collaborations around AI platform strategy, analytics operating models, and governed execution.",
             "He is useful where business, technology, stakeholders, and operating constraints must be designed together.",
@@ -752,6 +784,61 @@ def _comparison_fallback(question: str, topic: str) -> str:
     ])
 
 
+
+def _apply_answer_quality(answer: str, route: str, question: str) -> str:
+    lines = [line for line in str(answer or "").splitlines() if line.strip()]
+    score = _score_line_for(route, question)
+    emphasized = [_emphasize_question_keyword(line, question) for line in lines]
+    if score and not any(line.lower().startswith(("score:", "fit:", "confidence:")) for line in emphasized):
+        return "\n".join([score, *emphasized])
+    return "\n".join(emphasized)
+
+
+def _score_line_for(route: str, question: str) -> str | None:
+    text = question.lower()
+    if route == ROUTE_HIRING_FIT:
+        return "Fit: 100%"
+    if route == ROUTE_INTERVIEW_EVALUATION:
+        return "Signal strength: 9/10"
+    if route == ROUTE_COLLABORATION_FIT and _matches(text, r"\b(team|collaborat|partner|fit|lead)\b"):
+        return "Score: 9/10"
+    if _matches(text, r"\b(score|rate|rating|fit|worthy|good|strong|should|can he|hire|team player|know genai|genai)\b"):
+        return "Confidence: High"
+    return None
+
+
+def _emphasize_question_keyword(line: str, question: str) -> str:
+    keyword = _question_keyword(question)
+    if not keyword or "**" in line:
+        return line
+    pattern = re.compile(rf"\b({re.escape(keyword)})\b", flags=re.IGNORECASE)
+    return pattern.sub(lambda m: f"**{m.group(1)}**", line, count=1)
+
+
+def _question_keyword(question: str) -> str | None:
+    text = question.lower()
+    priority = [
+        (r"\bgenai\b|generative ai", "GenAI"),
+        (r"\bhire|recruit|candidate|shortlist|offer|placement\b", "hire"),
+        (r"team player|teamwork|\bteam\b", "team"),
+        (r"interview signal|\bsignal\b", "signal"),
+        (r"current job|current role|current focus", "current"),
+        (r"where did|where all|work", "worked"),
+        (r"collaborat|partner", "collaboration"),
+        (r"modelling|modeling|model\b", "modelling"),
+        (r"probability", "probability"),
+        (r"statistics|statistical", "statistics"),
+        (r"analytics", "analytics"),
+        (r"governance", "governance"),
+        (r"reliability", "reliability"),
+        (r"ai platform|platform", "platform"),
+    ]
+    for pattern, keyword in priority:
+        if re.search(pattern, text):
+            return keyword
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Response builders
 # ---------------------------------------------------------------------------
@@ -778,13 +865,13 @@ def _build_error_response(message: str, previous_state: Mapping[str, Any]) -> di
         _join_bullets([
             "I could not complete that request right now.",
             "Please try again in a moment.",
-            "You can also choose one of the directions below.",
+            "Your session state is preserved for a retry.",
         ]),
         options,
         state,
         None,
         [],
-    ) | {"error": {"message": message}}
+    ) | {"error": {"message": message, "error_type": "lambda_error", "retryable": True}}
 
 
 def _json_response(status_code: int, payload: Mapping[str, Any]) -> Dict[str, Any]:

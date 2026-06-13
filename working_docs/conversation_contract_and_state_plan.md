@@ -119,3 +119,116 @@ State rules must define:
 - How subject-depth options are selected.
 
 No code should be executed for the redesign until these rules are agreed.
+
+## Implemented Contract Checkpoint
+
+The stateful contract has now been implemented in Lambda, Flask, and the frontend.
+
+Implementation status:
+
+- `chat_history` and `conversation_state` are sent from the frontend.
+- `conversation_context` is still supported temporarily for backward compatibility.
+- Lambda decides route, topic, state transitions, and options.
+- The model writes only the answer body.
+- Lambda validates and assembles the final response.
+- Frontend stores returned `conversation_state` in localStorage.
+- Frontend renders `answer` and `options` separately.
+- Follow-up buttons use the returned `options` array.
+- New sessions can use a seeded experience sequence instead of always starting from BPCL.
+
+## Current Contract Gap
+
+Testing after implementation showed that the structure is working, but the quality layer needs another pass.
+
+Observed gaps:
+
+- Intermittent API failures interrupt the conversation.
+- Route-specific follow-ups are not always precise enough.
+- Some answers still sound generic.
+- Some answers are too verbose or not decisive enough.
+- Some answers do not emphasize the user's key term.
+- Some judgment questions do not produce a clear score or number.
+- Some route transitions still need stronger validation.
+
+## Next Contract Layer - Stability, Options, And Answer Quality
+
+### Error And Retry Contract
+
+Lambda/Flask/frontend should support clearer failure handling:
+
+```json
+{
+  "status": "error",
+  "error_type": "api_timeout",
+  "message": "The request timed out. Please retry.",
+  "retryable": true
+}
+```
+
+Target error types:
+
+- `api_timeout`
+- `lambda_error`
+- `bedrock_error`
+- `bad_response`
+- `validation_error`
+
+The frontend should keep the failed user turn and allow retry without losing session state.
+
+### Route-Aware Option Contract
+
+Options should be generated from route/topic-aware maps.
+
+Rules:
+
+- Always return exactly two options for normal professional answers.
+- Option 1 continues the relevant professional or experience thread.
+- Option 2 opens a subject-depth thread.
+- Subject-depth threads should vary across analytics, mathematics, probability, statistics, data modelling, ML, deep learning, MLOps, GenAI, governance, uncertainty, decision quality, and systems thinking.
+- Options should be short and clickable.
+- Options should not include labels such as `Follow-up choice`.
+
+### Answer Quality Profile
+
+The answer should follow this profile:
+
+```text
+Score: 9/10
+
+- **Key term:** Direct answer to the user's question.
+- **Proof:** Concrete evidence from Rajesh's work or skills.
+- **Fit/Meaning:** Why it matters for hiring, collaboration, AI, or platform work.
+```
+
+Rules:
+
+- Use a number when the user asks for judgment.
+- Bold the user keyword or core intent.
+- Keep answers to 2-4 bullets.
+- Use sentence form, not robotic keyword fragments.
+- Avoid full biography unless explicitly asked.
+- Avoid repeated wording across turns.
+- Avoid unfinished sentences.
+
+### Hiring And Recruiting Contract
+
+For hiring, recruiting, placement, role-fit, candidate-fit, or interview intent:
+
+- Answer confidently.
+- State that Rajesh is strongly hire-worthy for serious AI/platform/product/system roles.
+- Use evidence from education, systems experience, analytical ability, and execution history.
+- Avoid weak or neutral phrasing.
+- Keep it professional and grounded.
+
+### Next Implementation Target
+
+The next code phase should implement:
+
+- Flask retry and error classification.
+- Frontend retry UX.
+- Route-specific option maps.
+- Keyword emphasis.
+- Score/number formatting.
+- Stronger answer validator.
+- More specific fallback answers for each route.
+

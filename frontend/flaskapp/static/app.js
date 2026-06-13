@@ -17,10 +17,11 @@ const STATE_KEY = "rid_conversation_state";
 const sampleQuestions = [
   "What did Rajesh do at BPCL?",
   "What did Rajesh do at Medtronic?",
-  "What should I know first about Rajesh Arigala?",
-  "Show me Rajesh's strongest proof of systems thinking.",
-  "Which parts of Rajesh's experience are most relevant for AI platforms?",
-  "Where should I start if I am evaluating Rajesh for collaboration?"
+  "What did Rajesh learn from Supreme Court work?",
+  "What did Rajesh build at SMAAT?",
+  "What did Rajesh execute at R-Cafe?",
+  "What did Rajesh create at RedRybbons?",
+  "How does Rajesh's experience connect to AI platforms?"
 ];
 
 let sessionId = getOrCreateSessionId();
@@ -147,10 +148,12 @@ function renderMessages() {
         ${message.meta ? `<span>${escapeHtml(message.meta)}</span>` : ""}
       </div>
       <div class="message-body">${formatText(message.text, message.role, message.options || [])}</div>
+      ${message.retry ? `<button type="button" class="retry-button" data-message-index="${escapeHtml(message.messageIndex)}">Retry</button>` : ""}
     `;
     chatHistory.appendChild(article);
   });
   attachFollowupChoiceHandlers();
+  attachRetryHandlers();
   chatHistory.scrollTop = chatHistory.scrollHeight;
 }
 
@@ -217,7 +220,12 @@ chatForm.addEventListener("submit", async (event) => {
     await streamAssistantMessage(assistantIndex, payload.answer || "No answer returned.", meta, payload.options || []);
     setStatus("Connected", "ready");
   } catch (error) {
-    messages[assistantIndex] = { role: "assistant", text: `I could not reach Raj Intelligence Desk API. ${error.message}`, meta: "Request failed" };
+    messages[assistantIndex] = {
+      role: "assistant",
+      text: `I could not reach Raj Intelligence Desk API. ${error.message}`,
+      meta: "Request failed",
+      retry: { question, chatHistory, state: requestState }
+    };
     setStatus("API Error", "error");
     renderMessages();
   } finally {
@@ -347,6 +355,10 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+function renderInlineMarkdown(value) {
+  return escapeHtml(value).replace(/\*\*(.+?)\*\*/g, '<strong class="keyword-emphasis">$1</strong>');
+}
+
 function formatText(value, role = "assistant", options = []) {
   const raw = String(value ?? "");
   if (role !== "assistant") return escapeHtml(raw).replace(/\n/g, "<br>");
@@ -357,9 +369,9 @@ function formatText(value, role = "assistant", options = []) {
     if (!trimmed || /^follow[- ]?up choices?:\s*$/i.test(trimmed)) return;
     const match = trimmed.match(/^(?:[-*•]|\d+[.)])\s+(.+)$/);
     if (match) {
-      html.push(`<div class="answer-bullet">${escapeHtml(match[1].trim())}</div>`);
+      html.push(`<div class="answer-bullet">${renderInlineMarkdown(match[1].trim())}</div>`);
     } else {
-      html.push(`<span>${escapeHtml(line)}</span>`);
+      html.push(`<span>${renderInlineMarkdown(line)}</span>`);
     }
   });
 
@@ -378,6 +390,44 @@ function attachFollowupChoiceHandlers() {
     button.addEventListener("click", () => {
       questionInput.value = button.dataset.choice || button.textContent.trim();
       questionInput.focus();
+    });
+  });
+}
+
+function attachRetryHandlers() {
+  chatHistory.querySelectorAll(".retry-button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const index = Number(button.dataset.messageIndex);
+      const retryPayload = messages[index] && messages[index].retry;
+      if (!retryPayload) return;
+      button.disabled = true;
+      sendButton.disabled = true;
+      questionInput.disabled = true;
+      setStatus("Retrying", "loading");
+      try {
+        const payload = await askQuestion(retryPayload.question, retryPayload.chatHistory, retryPayload.state);
+        if (payload.conversation_state && typeof payload.conversation_state === "object") {
+          conversationState = payload.conversation_state;
+          saveConversationState();
+        }
+        const meta = payload.model_id ? `Model: ${payload.model_id}` : publicStatus(payload.status);
+        await streamAssistantMessage(index, payload.answer || "No answer returned.", meta, payload.options || []);
+        setStatus("Connected", "ready");
+      } catch (error) {
+        messages[index] = {
+          role: "assistant",
+          text: `I could not reach Raj Intelligence Desk API. ${error.message}`,
+          meta: "Request failed",
+          retry: retryPayload
+        };
+        saveMessages();
+        renderMessages();
+        setStatus("API Error", "error");
+      } finally {
+        sendButton.disabled = false;
+        questionInput.disabled = false;
+        questionInput.focus();
+      }
     });
   });
 }

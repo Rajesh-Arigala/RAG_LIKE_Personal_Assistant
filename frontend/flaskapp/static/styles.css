@@ -177,16 +177,17 @@ h2 {
 .sample-button {
   width: 100%;
   padding: 7px 9px;
-  background: #f8fafb;
-  color: var(--ink);
+  background: #f1f7fc;
+  color: var(--blue);
   text-align: left;
   line-height: 1.25;
+  font-weight: 750;
 }
 
 .sample-button:hover,
 .secondary-button:hover {
-  border-color: #9cb8cb;
-  background: var(--soft-blue);
+  border-color: #1f5f99;
+  background: #e5f1fa;
 }
 
 .session-section {
@@ -496,4 +497,25 @@ textarea:disabled {
   .message {
     max-width: min(680px, 82%);
   }
+}
+
+.retry-button {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px solid #b5cce0;
+  border-radius: 6px;
+  background: #f1f7fc;
+  color: var(--blue);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.retry-button:hover {
+  border-color: #1f5f99;
+  background: #e5f1fa;
+}
+
+.keyword-emphasis {
+  font-weight: 800;
 }

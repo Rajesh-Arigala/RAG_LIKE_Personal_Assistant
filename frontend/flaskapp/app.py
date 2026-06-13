@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 from pathlib import Path
 from urllib import error, request as urllib_request
 
@@ -63,6 +64,23 @@ def chat():
         "conversation_context": chat_history,
         "conversation_state": conversation_state,
     }).encode("utf-8")
+    data, status_code = _call_gateway_with_retry(api_url, outbound)
+    return jsonify(data), status_code
+
+
+def _call_gateway_with_retry(api_url: str, outbound: bytes) -> tuple[dict, int]:
+    last_error: dict | None = None
+    for attempt in range(2):
+        data, status_code = _call_gateway_once(api_url, outbound, timeout=55)
+        if status_code < 500:
+            return data, status_code
+        last_error = data
+        if not _is_retryable_error(data, status_code):
+            return data, status_code
+    return last_error or _error_payload("api_error", "Could not reach Raj Intelligence Desk API.", True), 502
+
+
+def _call_gateway_once(api_url: str, outbound: bytes, timeout: int) -> tuple[dict, int]:
     api_request = urllib_request.Request(
         api_url,
         data=outbound,
@@ -70,28 +88,40 @@ def chat():
         method="POST",
     )
     try:
-        with urllib_request.urlopen(api_request, timeout=45) as response:
+        with urllib_request.urlopen(api_request, timeout=timeout) as response:
             raw = response.read().decode("utf-8")
             status_code = response.getcode()
     except error.HTTPError as exc:
         raw = exc.read().decode("utf-8")
         status_code = exc.code
+    except socket.timeout:
+        return _error_payload("api_timeout", "Raj Intelligence Desk API timed out. Please retry.", True), 504
     except Exception as exc:
-        return jsonify({
-            "status": "error",
-            "error": {"message": f"Could not reach Raj Intelligence Desk API: {exc}"},
-        }), 502
+        return _error_payload("api_error", f"Could not reach Raj Intelligence Desk API: {exc}", True), 502
 
     try:
-        data = json.loads(raw or "{}")
+        return json.loads(raw or "{}"), status_code
     except json.JSONDecodeError:
-        return jsonify({
-            "status": "error",
-            "error": {"message": "API returned a non-JSON response."},
-            "raw": raw[:500],
-        }), 502
+        return _error_payload("bad_response", "API returned a non-JSON response.", True, raw[:500]), 502
 
-    return jsonify(data), status_code
+
+def _error_payload(error_type: str, message: str, retryable: bool, raw: str | None = None) -> dict:
+    payload = {
+        "status": "error",
+        "error_type": error_type,
+        "retryable": retryable,
+        "error": {"message": message, "error_type": error_type, "retryable": retryable},
+    }
+    if raw:
+        payload["raw"] = raw
+    return payload
+
+
+def _is_retryable_error(data: dict, status_code: int) -> bool:
+    error_info = data.get("error") if isinstance(data, dict) else {}
+    error_type = data.get("error_type") or (error_info or {}).get("error_type")
+    retryable = data.get("retryable") if "retryable" in data else (error_info or {}).get("retryable")
+    return bool(retryable or status_code in {502, 503, 504} or error_type in {"api_timeout", "api_error", "lambda_error", "bedrock_error"})
 
 
 @app.get("/health")

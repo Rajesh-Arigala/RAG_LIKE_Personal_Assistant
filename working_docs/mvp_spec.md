@@ -434,7 +434,7 @@ Frontend update:
 - The frontend now treats all list items after the first 3 answer bullets as clickable options, allowing 2-5 comparison choices.
 - JavaScript cache version is now `app.js?v=19`.
 
-## 15. Conversation-Control Redesign Decision
+## 21. Conversation-Control Redesign Decision
 
 The previous MVP approach sent recent messages as `conversation_context` and relied on the model to infer continuity. Testing showed this is not reliable enough for Raj AI Concierge.
 
@@ -445,7 +445,7 @@ The revised architecture will separate responsibilities:
 - Bedrock/Nova writes only the concise answer body.
 - Lambda validates answer quality and builds the final response.
 
-## 16. Revised Conversation Contract Direction
+## 22. Revised Conversation Contract Direction
 
 The new request contract will support:
 
@@ -508,7 +508,7 @@ Important revised rule:
 - `conversation_state` is sent and returned every request.
 - `conversation_context` may remain temporarily supported for backward compatibility, but the system should migrate to `chat_history` plus `conversation_state`.
 
-## 17. Revised Responsibility Split
+## 23. Revised Responsibility Split
 
 Code-owned responsibilities:
 
@@ -528,4 +528,76 @@ Model-owned responsibilities:
 - Avoid creating follow-up options.
 
 This redesign is required before further frontend or deployment polishing.
+
+## 24. Implemented Stateful Conversation Engine
+
+The MVP has moved from a prompt-heavy conversation design to a stateful conversation engine.
+
+Current implemented contract:
+
+- Frontend sends `session_id`, `question`, `chat_history`, and `conversation_state`.
+- Flask forwards these fields to API Gateway/Lambda.
+- Lambda decides route, topic, selected option, turn count, covered experiences, and next options.
+- Lambda asks the model to produce only the answer body.
+- Lambda returns `answer`, `options`, and updated `conversation_state`.
+- Frontend renders answer text and clickable options separately.
+
+Conversation state now includes:
+
+- `current_route`
+- `current_topic`
+- `last_experience_topic`
+- `topic_turn_count`
+- `total_turn_count`
+- `covered_experiences`
+- `last_options`
+- `selected_option`
+- `last_user_intent`
+- `comparison_milestones_shown`
+- `journey_seed`
+- `experience_sequence`
+
+New sessions can start from different experience paths using `journey_seed`, while remaining deterministic within that session.
+
+## 25. Next MVP Refinement Scope
+
+### API Stability
+
+The app should reduce or recover from intermittent `Load failed` errors.
+
+Planned improvements:
+
+- Increase frontend/Flask request timeout where practical.
+- Add one controlled retry from Flask for transient API Gateway/Lambda errors.
+- Return clearer error categories such as `api_timeout`, `lambda_error`, `bedrock_error`, and `bad_response`.
+- Keep failed user turns visible and recoverable.
+- Add a Retry action in the frontend for failed assistant responses.
+- Keep answers short so Lambda and API Gateway complete faster.
+
+### Route-Specific Follow-Ups
+
+Follow-up options must be route-aware and topic-aware.
+
+Planned improvements:
+
+- Define option maps for hiring, interview, collaboration, teamwork, GenAI, AI platform fit, work experience, comparison, and overview routes.
+- Ensure one option continues the current professional/experience thread.
+- Ensure the second option opens a subject-depth path such as analytics, probability, statistics, data modelling, ML, deep learning, MLOps, GenAI, governance, or systems thinking.
+- Prevent unrelated jumps such as a GenAI answer leading to an unrelated R-Cafe option.
+
+### Answer Quality Contract
+
+Answers should become more specific, confident, and less template-like.
+
+Planned answer rules:
+
+- Use 2-4 concise bullets.
+- Use a visible number when the user asks for judgment, such as `Score: 9/10` or `Fit: 95%`.
+- Bold the key term from the user's question.
+- Answer the exact question first.
+- Use concrete evidence from Rajesh's work history.
+- Avoid long paragraphs.
+- Avoid repeated generic language.
+- Avoid unfinished or cut-off sentences.
+- Keep follow-up option labels short.
 
