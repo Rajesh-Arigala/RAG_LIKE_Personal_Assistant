@@ -44,9 +44,12 @@ def chat():
     payload = request.get_json(silent=True) or {}
     question = str(payload.get("question") or "").strip()
     session_id = str(payload.get("session_id") or "").strip()
-    conversation_context = payload.get("conversation_context")
-    if not isinstance(conversation_context, list):
-        conversation_context = []
+    chat_history = payload.get("chat_history", payload.get("conversation_context"))
+    if not isinstance(chat_history, list):
+        chat_history = []
+    conversation_state = payload.get("conversation_state")
+    if not isinstance(conversation_state, dict):
+        conversation_state = {}
     if not question:
         return jsonify({
             "status": "validation_error",
@@ -56,7 +59,9 @@ def chat():
     outbound = json.dumps({
         "question": question,
         "session_id": session_id,
-        "conversation_context": conversation_context,
+        "chat_history": chat_history,
+        "conversation_context": chat_history,
+        "conversation_state": conversation_state,
     }).encode("utf-8")
     api_request = urllib_request.Request(
         api_url,

@@ -12,6 +12,7 @@ const profilePhoto = document.querySelector("#profile-photo");
 
 const STORAGE_KEY = "rid_chat_history";
 const SESSION_KEY = "rid_session_id";
+const STATE_KEY = "rid_conversation_state";
 
 const sampleQuestions = [
   "What did Rajesh do at BPCL?",
@@ -24,6 +25,7 @@ const sampleQuestions = [
 
 let sessionId = getOrCreateSessionId();
 let messages = loadMessages();
+let conversationState = loadConversationState();
 
 profilePhoto.addEventListener("error", () => {
   profilePhoto.classList.add("is-hidden");
@@ -51,6 +53,49 @@ function loadMessages() {
 function saveMessages() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
 }
+
+function defaultConversationState() {
+  const seed = chooseJourneySeed();
+  return {
+    current_route: "GUIDED_DISCOVERY",
+    current_topic: "NONE",
+    last_experience_topic: "NONE",
+    topic_turn_count: 0,
+    total_turn_count: 0,
+    covered_experiences: [],
+    last_options: [],
+    selected_option: null,
+    last_user_intent: null,
+    comparison_milestones_shown: [],
+    journey_seed: seed,
+    experience_sequence: buildExperienceSequence(seed)
+  };
+}
+
+function chooseJourneySeed() {
+  const topics = ["BPCL", "Medtronic", "Supreme Court", "SMAAT", "R-Cafe", "RedRybbons"];
+  return topics[Math.floor(Math.random() * topics.length)];
+}
+
+function buildExperienceSequence(seed) {
+  const topics = ["BPCL", "Medtronic", "Supreme Court", "SMAAT", "R-Cafe", "RedRybbons"];
+  const index = Math.max(0, topics.indexOf(seed));
+  return topics.slice(index).concat(topics.slice(0, index));
+}
+
+function loadConversationState() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STATE_KEY) || "null");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : defaultConversationState();
+  } catch {
+    return defaultConversationState();
+  }
+}
+
+function saveConversationState() {
+  localStorage.setItem(STATE_KEY, JSON.stringify(conversationState || defaultConversationState()));
+}
+
 
 function publicStatus(status) {
   return ["refused", "request failed"].includes(String(status || "").toLowerCase()) ? status : "";
@@ -101,7 +146,7 @@ function renderMessages() {
         <strong>${escapeHtml(name)}</strong>
         ${message.meta ? `<span>${escapeHtml(message.meta)}</span>` : ""}
       </div>
-      <div class="message-body">${formatText(message.text, message.role)}</div>
+      <div class="message-body">${formatText(message.text, message.role, message.options || [])}</div>
     `;
     chatHistory.appendChild(article);
   });
@@ -109,14 +154,16 @@ function renderMessages() {
   chatHistory.scrollTop = chatHistory.scrollHeight;
 }
 
-async function askQuestion(question, conversationContext) {
+async function askQuestion(question, chatHistory, state) {
   const response = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       session_id: sessionId,
       question,
-      conversation_context: conversationContext
+      chat_history: chatHistory,
+      conversation_context: chatHistory,
+      conversation_state: state
     })
   });
 
@@ -146,7 +193,8 @@ chatForm.addEventListener("submit", async (event) => {
   const typedQuestion = questionInput.value.trim();
   if (!typedQuestion) return;
   const question = resolveChoiceReference(typedQuestion);
-  const conversationContext = buildConversationParcel();
+  const chatHistory = buildConversationParcel();
+  const requestState = { ...conversationState };
 
   messages.push({ role: "user", text: question });
   const assistantIndex = messages.length;
@@ -160,9 +208,13 @@ chatForm.addEventListener("submit", async (event) => {
   setStatus("Thinking", "loading");
 
   try {
-    const payload = await askQuestion(question, conversationContext);
+    const payload = await askQuestion(question, chatHistory, requestState);
+    if (payload.conversation_state && typeof payload.conversation_state === "object") {
+      conversationState = payload.conversation_state;
+      saveConversationState();
+    }
     const meta = payload.model_id ? `Model: ${payload.model_id}` : publicStatus(payload.status);
-    await streamAssistantMessage(assistantIndex, payload.answer || "No answer returned.", meta);
+    await streamAssistantMessage(assistantIndex, payload.answer || "No answer returned.", meta, payload.options || []);
     setStatus("Connected", "ready");
   } catch (error) {
     messages[assistantIndex] = { role: "assistant", text: `I could not reach Raj Intelligence Desk API. ${error.message}`, meta: "Request failed" };
@@ -178,22 +230,26 @@ chatForm.addEventListener("submit", async (event) => {
 
 clearHistoryButton.addEventListener("click", () => {
   messages = [];
+  conversationState = defaultConversationState();
   saveMessages();
+  saveConversationState();
   renderMessages();
 });
 
 newSessionButton.addEventListener("click", () => {
   localStorage.removeItem(SESSION_KEY);
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(STATE_KEY);
   sessionId = getOrCreateSessionId();
   messages = [];
+  conversationState = defaultConversationState();
   renderMessages();
   setStatus("New Session", "ready");
 });
 
-async function streamAssistantMessage(messageIndex, finalText, meta) {
+async function streamAssistantMessage(messageIndex, finalText, meta, options = []) {
   const text = String(finalText || "");
-  messages[messageIndex] = { role: "assistant", text: "", meta };
+  messages[messageIndex] = { role: "assistant", text: "", meta, options };
   renderMessages();
 
   const body = chatHistory.querySelector(`[data-message-index="${messageIndex}"] .message-body`);
@@ -201,6 +257,7 @@ async function streamAssistantMessage(messageIndex, finalText, meta) {
   if (headMeta) headMeta.textContent = meta;
   if (!body) {
     messages[messageIndex].text = text;
+    messages[messageIndex].options = options;
     renderMessages();
     return;
   }
@@ -215,6 +272,7 @@ async function streamAssistantMessage(messageIndex, finalText, meta) {
   }
 
   messages[messageIndex].text = text;
+  messages[messageIndex].options = options;
   renderMessages();
 }
 
@@ -247,6 +305,7 @@ function getLastAssistantChoices() {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!message || message.role !== "assistant") continue;
+    if (Array.isArray(message.options) && message.options.length) return message.options;
     const choices = extractChoices(message.text);
     if (choices.length) return choices;
   }
@@ -288,32 +347,29 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-function formatText(value, role = "assistant") {
+function formatText(value, role = "assistant", options = []) {
   const raw = String(value ?? "");
   if (role !== "assistant") return escapeHtml(raw).replace(/\n/g, "<br>");
 
-  const lines = raw.split(/\n/);
-  const listItems = lines
-    .map((line, index) => ({ index, match: line.trim().match(/^(?:[-*•]|\d+[.)])\s+(.+)$/) }))
-    .filter((item) => item.match);
-  const choiceItems = listItems.length <= 2 ? listItems : listItems.slice(3);
-  const choiceIndexes = new Set(choiceItems.map((item) => item.index));
-
   const html = [];
-  lines.forEach((line, index) => {
+  raw.split(/\n/).forEach((line) => {
     const trimmed = line.trim();
-    if (/^follow[- ]?up choices?:\s*$/i.test(trimmed)) return;
+    if (!trimmed || /^follow[- ]?up choices?:\s*$/i.test(trimmed)) return;
     const match = trimmed.match(/^(?:[-*•]|\d+[.)])\s+(.+)$/);
-    if (match && choiceIndexes.has(index)) {
-      const choiceText = shortenChoiceLabel(match[1].trim());
-      const fullChoiceText = cleanChoiceLabel(match[1].trim());
-      html.push(`<button type="button" class="followup-choice" data-choice="${escapeHtml(fullChoiceText)}">${escapeHtml(choiceText)}</button>`);
-    } else if (match) {
+    if (match) {
       html.push(`<div class="answer-bullet">${escapeHtml(match[1].trim())}</div>`);
-    } else if (trimmed) {
+    } else {
       html.push(`<span>${escapeHtml(line)}</span>`);
     }
   });
+
+  if (Array.isArray(options) && options.length) {
+    options.forEach((option) => {
+      const fullChoiceText = cleanChoiceLabel(option);
+      const choiceText = shortenChoiceLabel(fullChoiceText);
+      html.push(`<button type="button" class="followup-choice" data-choice="${escapeHtml(fullChoiceText)}">${escapeHtml(choiceText)}</button>`);
+    });
+  }
   return html.join("<br>");
 }
 

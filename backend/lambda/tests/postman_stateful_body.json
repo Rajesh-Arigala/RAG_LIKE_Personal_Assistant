@@ -1,0 +1,48 @@
+{
+  "session_id": "RID-TEST-STATE",
+  "question": "Which signals predict failure?",
+  "chat_history": [
+    {
+      "role": "user",
+      "text": "Start with Rajesh's work experience."
+    },
+    {
+      "role": "assistant",
+      "text": "- At BPCL, Rajesh worked on refinery reliability, asset governance, maintenance planning, and operational coordination."
+    },
+    {
+      "role": "user",
+      "text": "Explore BPCL reliability work."
+    },
+    {
+      "role": "assistant",
+      "text": "- At BPCL, Rajesh worked on refinery reliability, asset governance, maintenance planning, and operational coordination."
+    }
+  ],
+  "conversation_state": {
+    "current_route": "WORK_EXPERIENCE",
+    "current_topic": "BPCL",
+    "last_experience_topic": "BPCL",
+    "topic_turn_count": 1,
+    "total_turn_count": 2,
+    "covered_experiences": [
+      "BPCL"
+    ],
+    "last_options": [
+      "Explore BPCL reliability work.",
+      "Which signals predict failure?"
+    ],
+    "selected_option": null,
+    "last_user_intent": "EXPERIENCE_FOLLOWUP",
+    "comparison_milestones_shown": [],
+    "journey_seed": "BPCL",
+    "experience_sequence": [
+      "BPCL",
+      "Medtronic",
+      "Supreme Court",
+      "SMAAT",
+      "R-Cafe",
+      "RedRybbons"
+    ]
+  }
+}
